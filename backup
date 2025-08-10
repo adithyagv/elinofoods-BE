@@ -1,0 +1,39 @@
+require("dotenv").config();
+const express = require("express");
+const axios = require("axios");
+const cors = require("cors");
+
+const app = express();
+const PORT = process.env.PORT || 4000;
+const INSTAGRAM_TOKEN = process.env.INSTAGRAM_APP_TOKEN;
+
+app.use(
+  cors({
+    origin: `http://localhost:3000`,
+  })
+);
+app.use(express.json());
+
+// app.post('/api/oembed', async (req, res) => {
+//   const { url } = req.body;
+//   if (!url) return res.status(400).json({ error: 'Missing "url"' });
+
+//   try {
+//     const endpoint = `https://graph.facebook.com/v22.0/instagram_oembed`;
+//     const { data } = await axios.get(endpoint, {
+//       params: {
+//         url,
+//         access_token: INSTAGRAM_TOKEN,
+//         maxwidth: 500
+//       }
+//     });
+//     res.json({ html: data.html });
+//   } catch (e) {
+//     console.error('oEmbed error:', e.response?.data || e.message);
+//     res.status(500).json({ error: 'oEmbed failed', details: e.response?.data });
+//   }
+// });
+
+app.listen(PORT, () =>
+  console.log(`🟢 Server running on http://localhost:${PORT}`)
+);
