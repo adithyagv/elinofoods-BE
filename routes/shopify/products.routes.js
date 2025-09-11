@@ -15,15 +15,14 @@ router.get("/quick", async (req, res) => {
   const cacheKey = "products:quick";
 
   try {
-    // Check cache first
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log("⚡ Returning cached products");
+      console.log("🛒 Cached Products:", JSON.stringify(cached, null, 2)); // 👈 log cached
       res.set("X-Cache", "HIT");
       return res.json(cached);
     }
 
-    // Optimized query - only essential fields
     const query = `
       {
         products(first: 100, sortKey: BEST_SELLING) {
@@ -51,9 +50,8 @@ router.get("/quick", async (req, res) => {
     console.log("🔍 Fetching products from Shopify...");
     const data = await graphQLClient.request(query);
 
-    // Transform to lighter format
     const products = data.products.edges.map(({ node }) => ({
-      id: node.id.split("/").pop(), // Shorter ID
+      id: node.id.split("/").pop(),
       title: node.title,
       handle: node.handle,
       price: {
@@ -64,10 +62,11 @@ router.get("/quick", async (req, res) => {
       available: node.availableForSale,
     }));
 
-    // Cache for 5 minutes
     cache.set(cacheKey, products, 300);
 
     console.log(`✅ Fetched ${products.length} products`);
+    console.log("🛒 Products:", JSON.stringify(products, null, 2)); // 👈 log products
+
     res.set("X-Cache", "MISS");
     res.json(products);
   } catch (error) {
@@ -76,7 +75,7 @@ router.get("/quick", async (req, res) => {
   }
 });
 
-// OPTIMIZED: Original products endpoint with better query
+// Products endpoint
 router.get("/", async (req, res) => {
   const { limit = 20, sortKey = "UPDATED_AT", reverse = true } = req.query;
 
@@ -130,6 +129,9 @@ router.get("/", async (req, res) => {
       reverse: reverse === "true",
     });
 
+    console.log(`✅ Fetched ${data.products.edges.length} products`);
+    console.log("🛒 Products:", JSON.stringify(data.products.edges, null, 2)); // 👈 log products
+
     res.json(data.products.edges);
   } catch (error) {
     console.error("Error fetching products:", error);
@@ -137,16 +139,17 @@ router.get("/", async (req, res) => {
   }
 });
 
-// OPTIMIZED: Product by handle with selective loading
+// Product by handle
 router.get("/:handle", async (req, res) => {
   const { handle } = req.params;
   const cache = req.cache;
   const cacheKey = `product:${handle}`;
 
   try {
-    // Check cache
     const cached = cache.get(cacheKey);
     if (cached) {
+      console.log(`⚡ Returning cached product for handle: ${handle}`);
+      console.log("🛒 Cached Product:", JSON.stringify(cached, null, 2)); // 👈 log cached
       res.set("X-Cache", "HIT");
       return res.json(cached);
     }
@@ -199,8 +202,10 @@ router.get("/:handle", async (req, res) => {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // Cache for 10 minutes
     cache.set(cacheKey, data.product, 600);
+
+    console.log(`✅ Fetched product for handle: ${handle}`);
+    console.log("🛒 Product:", JSON.stringify(data.product, null, 2)); // 👈 log product
 
     res.set("X-Cache", "MISS");
     res.json(data.product);
@@ -210,7 +215,7 @@ router.get("/:handle", async (req, res) => {
   }
 });
 
-// BATCH PRODUCTS BY HANDLES (NEW - for fast loading specific products)
+// Batch products
 router.post("/batch", async (req, res) => {
   try {
     const { handles } = req.body;
@@ -219,7 +224,6 @@ router.post("/batch", async (req, res) => {
       return res.status(400).json({ error: "handles array is required" });
     }
 
-    // Build query for multiple products
     const queries = handles
       .map(
         (handle, index) => `
@@ -254,9 +258,10 @@ router.post("/batch", async (req, res) => {
     `;
 
     const data = await graphQLClient.request(query);
-
-    // Transform response to array
     const products = Object.values(data).filter((product) => product !== null);
+
+    console.log(`✅ Batch fetched ${products.length} products`);
+    console.log("🛒 Products:", JSON.stringify(products, null, 2)); // 👈 log products
 
     res.json(products);
   } catch (error) {
@@ -265,7 +270,7 @@ router.post("/batch", async (req, res) => {
   }
 });
 
-// SEARCH PRODUCTS (NEW - optimized search)
+// Search products
 router.get("/search", async (req, res) => {
   try {
     const { q, limit = 10 } = req.query;
@@ -317,6 +322,9 @@ router.get("/search", async (req, res) => {
       availableForSale: node.availableForSale,
     }));
 
+    console.log(`✅ Search returned ${products.length} products`);
+    console.log("🛒 Products:", JSON.stringify(products, null, 2)); // 👈 log products
+
     res.json(products);
   } catch (error) {
     console.error("❌ Error searching products:", error);
@@ -324,7 +332,7 @@ router.get("/search", async (req, res) => {
   }
 });
 
-// PAGINATION ENDPOINT (NEW - for infinite scroll)
+// Paginated products
 router.get("/paginated", async (req, res) => {
   try {
     const { cursor, limit = 20 } = req.query;
@@ -379,6 +387,9 @@ router.get("/paginated", async (req, res) => {
       image: node.images.edges[0]?.node || null,
     }));
 
+    console.log(`✅ Paginated fetched ${products.length} products`);
+    console.log("🛒 Products:", JSON.stringify(products, null, 2)); // 👈 log products
+
     res.json({
       products,
       pageInfo: data.products.pageInfo,
@@ -389,9 +400,10 @@ router.get("/paginated", async (req, res) => {
   }
 });
 
-// Clear cache endpoint (for development)
+// Clear cache endpoint
 router.post("/cache/clear", (req, res) => {
   req.cache.clear();
+  console.log("🗑️ Cache cleared");
   res.json({ success: true, message: "Cache cleared" });
 });
 
