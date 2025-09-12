@@ -3,18 +3,18 @@ dotenv.config();
 
 import { GraphQLClient } from "graphql-request";
 
-if (!process.env.SHOPIFY_STOREFRONT_TOKEN) {
-  console.error("❌ Missing SHOPIFY_STOREFRONT_TOKEN in .env");
+if (!process.env.ADMIN_API) {
+  console.error("❌ Missing ADMIN_API in .env");
   process.exit(1);
 }
 
-console.log("Storefront token: ", process.env.SHOPIFY_STOREFRONT_TOKEN);
+console.log("Admin token: ", process.env.ADMIN_API);
 
-const endpoint = `https://${process.env.SHOPIFY_DOMAIN}/api/2024-01/graphql.json`;
+const endpoint = `https://${process.env.SHOPIFY_DOMAIN}/admin/api/2024-10/graphql.json`;
 
 const graphQLClient = new GraphQLClient(endpoint, {
   headers: {
-    "X-Shopify-Storefront-Access-Token": process.env.SHOPIFY_STOREFRONT_TOKEN,
+    "X-Shopify-Access-Token": process.env.ADMIN_API,
     "Content-Type": "application/json",
   },
 });

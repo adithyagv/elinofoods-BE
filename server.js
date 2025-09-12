@@ -7,6 +7,7 @@ import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
 import shopifyRoutes from "./routes/shopify.js";
+import { connectDB,newclient } from "./routes/admin/mongodbconnection.js";
 
 // Resolve __dirname (needed for ES modules)
 const __filename = fileURLToPath(import.meta.url);
@@ -20,7 +21,7 @@ const app = express();
 // In-memory cache
 const memoryCache = new Map();
 const memoryCacheTTL = new Map();
-
+connectDB();
 // Simple cache implementation
 const cache = {
   get(key) {
@@ -96,6 +97,7 @@ app.use("/api/shopify/products", (req, res, next) => {
   next();
 });
 
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -116,16 +118,24 @@ app.get("/", (req, res) => {
     version: "1.0",
   });
 });
+await connectDB();
 
+// get database instance
+const db = newclient.db("elinofoods");
 // Shopify routes with cache middleware
 app.use(
   "/api/shopify",
   (req, res, next) => {
     req.cache = cache;
+    req.db = db;  // 👈 attach db to request
+
     next();
+
   },
   shopifyRoutes
 );
+
+
 
 // 404 handler
 app.use((req, res) => {
