@@ -1,3 +1,4 @@
+// routes/products.js
 import express from "express";
 import graphQLClient from "../../utils/shopifyClient.js";
 
@@ -5,17 +6,18 @@ const router = express.Router();
 
 // ✅ Get list of products
 router.get("/", async (req, res) => {
-  const { limit = 20, sortKey = "UPDATED_AT", reverse = true } = req.query;
+  const { limit = 20, reverse = true } = req.query;
 
   const query = `
-    query getProducts($first: Int!, $sortKey: ProductSortKeys!, $reverse: Boolean!) {
-      products(first: $first, sortKey: $sortKey, reverse: $reverse) {
+    query getProducts($first: Int!, $reverse: Boolean!) {
+      products(first: $first, reverse: $reverse) {
         edges {
           node {
             id
             title
             description
             handle
+            availableForSale
             priceRange {
               minVariantPrice {
                 amount
@@ -25,7 +27,7 @@ router.get("/", async (req, res) => {
             images(first: 1) {
               edges {
                 node {
-                  url(transform: {maxWidth: 400, maxHeight: 400})
+                  url(transform: { maxWidth: 400, maxHeight: 400 })
                   altText
                 }
               }
@@ -35,15 +37,14 @@ router.get("/", async (req, res) => {
                 node {
                   id
                   title
+                  availableForSale
                   price {
                     amount
                     currencyCode
                   }
-                  availableForSale
                 }
               }
             }
-            availableForSale
           }
         }
       }
@@ -53,81 +54,74 @@ router.get("/", async (req, res) => {
   try {
     const data = await graphQLClient.request(query, {
       first: parseInt(limit),
-      sortKey,
       reverse: reverse === "true",
     });
 
-    console.log(`✅ Fetched ${data.products.edges.length} products`);
-    res.json(data.products.edges);
+    const products = data.products.edges.map(edge => edge.node);
+    console.log(`✅ Fetched ${products.length} products`);
+    res.json({ success: true, products });
   } catch (error) {
-    console.error("❌ Error fetching products:", error);
+    console.error("❌ Error fetching products:", JSON.stringify(error, null, 2));
     res.status(500).json({ error: "Failed to fetch products" });
   }
 });
 
-// ✅ Get single product by ID
-router.get("/:id", async (req, res) => {
-  const { id } = req.params;
+// ✅ Get single product by handle
+router.get("/:handle", async (req, res) => {
+  const { handle } = req.params;
 
-  try {
-    // Ensure ID is in Shopify GID format
-    const productGID = id.startsWith("gid://")
-      ? id
-      : `gid://shopify/Product/${id}`;
-
-    const query = `
-      query getProduct($id: ID!) {
-        product(id: $id) {
-          id
-          title
-          description
-          handle
-          vendor
-          productType
-          availableForSale
-          priceRange {
-            minVariantPrice {
-              amount
-              currencyCode
+  const query = `
+    query getProduct($handle: String!) {
+      product(handle: $handle) {
+        id
+        title
+        description
+        handle
+        availableForSale
+        priceRange {
+          minVariantPrice {
+            amount
+            currencyCode
+          }
+        }
+        images(first: 5) {
+          edges {
+            node {
+              url
+              altText
             }
           }
-          images(first: 5) {
-            edges {
-              node {
-                url
-                altText
-              }
-            }
-          }
-          variants(first: 10) {
-            edges {
-              node {
-                id
-                title
-                sku
-                price {
-                  amount
-                  currencyCode
-                }
-                availableForSale
+        }
+        variants(first: 10) {
+          edges {
+            node {
+              id
+              title
+              sku
+              availableForSale
+              price {
+                amount
+                currencyCode
               }
             }
           }
         }
       }
-    `;
+    }
+  `;
 
-    const data = await graphQLClient.request(query, { id: productGID });
+  try {
+    const data = await graphQLClient.request(query, { handle });
 
     if (!data.product) {
       return res.status(404).json({ error: "Product not found" });
     }
 
     console.log(`✅ Fetched product: ${data.product.title}`);
-    res.json(data.product);
+    res.json({ success: true, product: data.product });
   } catch (error) {
-    console.error("❌ Error fetching product by ID:", error);
-    res.status(500).json({ error: "Failed to fetch product by ID" });
+    console.error("❌ Error fetching product by handle:", JSON.stringify(error, null, 2));
+    res.status(500).json({ error: "Failed to fetch product by handle" });
   }
 });
 

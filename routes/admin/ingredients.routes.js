@@ -1,5 +1,4 @@
 import express from "express";
-import graphQLClient from "../../utils/shopifyClient.js";
 import Ingredients from "./ingredientsschema.js";
 
 const router = express.Router();
