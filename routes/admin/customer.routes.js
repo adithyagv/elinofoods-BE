@@ -183,4 +183,127 @@ router.get("/customers", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch customers" });
   }
 });
+
+// UPDATE CUSTOMER (REST Admin API)
+router.put("/update", async (req, res) => {
+
+  try {
+    let { id, firstName, lastName, phone, defaultAddress } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: "Customer ID is required" });
+    }
+
+    // 🔑 Extract numeric ID from gid:// format
+    if (id.includes("/")) {
+      id = id.split("/").pop();
+    }
+
+    // 1️⃣ Update customer basic info
+    const customerResponse = await fetch(
+      `https://${process.env.SHOPIFY_DOMAIN}/admin/api/2024-01/customers/${id}.json`,
+      {
+        method: "PUT",
+        headers: {
+          "X-Shopify-Access-Token": process.env.ADMIN_API,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customer: {
+            id,
+            first_name: firstName,
+            last_name: lastName,
+            phone,
+          },
+        }),
+      }
+    );
+
+    const customerText = await customerResponse.text();
+    let customerData;
+    try {
+      customerData = JSON.parse(customerText);
+    } catch (e) {
+      console.error("❌ Failed to parse Shopify customer response:", customerText);
+      return res.status(500).json({ error: "Invalid response from Shopify" });
+    }
+
+    if (customerData.errors) {
+      return res.status(400).json({ error: customerData.errors });
+    }
+
+    // Helper to extract numeric ID from gid://
+    const extractNumericId = (gid) => {
+      if (!gid) return null;
+      let numeric = gid.split("/").pop();
+      if (numeric.includes("?")) numeric = numeric.split("?")[0];
+      return numeric;
+    };
+
+    // 2️⃣ Update default address if provided
+    if (defaultAddress && defaultAddress.id) {
+      const addressId = extractNumericId(defaultAddress.id);
+
+      const addressResponse = await fetch(
+        `https://${process.env.SHOPIFY_DOMAIN}/admin/api/2024-01/customers/${id}/addresses/${addressId}.json`,
+        {
+          method: "PUT",
+          headers: {
+            "X-Shopify-Access-Token": process.env.ADMIN_API,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            address: {
+              address1: defaultAddress.address1,
+              address2: defaultAddress.address2,
+              city: defaultAddress.city,
+              province: defaultAddress.province,
+              zip: defaultAddress.zip,
+              country: defaultAddress.country,
+            },
+          }),
+        }
+      );
+
+      const addressText = await addressResponse.text();
+      let addressData;
+      try {
+        addressData = JSON.parse(addressText);
+      } catch (e) {
+        console.error("❌ Shopify address API returned non-JSON:", addressText);
+        return res
+          .status(500)
+          .json({ error: "Invalid response from Shopify Address API" });
+      }
+
+      if (addressData.errors) {
+        return res.status(400).json({ error: addressData.errors });
+      }
+
+      // Optionally, make this address the default
+      await fetch(
+        `https://${process.env.SHOPIFY_DOMAIN}/admin/api/2024-01/customers/${id}/addresses/${addressId}/default.json`,
+        {
+          method: "PUT",
+          headers: {
+            "X-Shopify-Access-Token": process.env.ADMIN_API,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      return res.json({
+        success: true,
+        customer: customerData.customer,
+        address: addressData.customer_address,
+      });
+    }
+
+    // ✅ If no address update, just return updated customer
+    res.json({ success: true, customer: customerData.customer });
+  } catch (error) {
+    console.error("❌ Error updating customer:", error);
+    res.status(500).json({ error: "Failed to update customer" });
+  }
+});
 export default router;
