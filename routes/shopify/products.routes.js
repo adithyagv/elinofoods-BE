@@ -143,20 +143,22 @@ router.get("/", async (req, res) => {
 router.get("/:handle", async (req, res) => {
   const { handle } = req.params;
   const cache = req.cache;
+
+  // Always treat handle as numeric product id
+  const gid = `gid://shopify/Product/${handle}`;
   const cacheKey = `product:${handle}`;
 
   try {
     const cached = cache.get(cacheKey);
     if (cached) {
-      console.log(`⚡ Returning cached product for handle: ${handle}`);
-      console.log("🛒 Cached Product:", JSON.stringify(cached, null, 2)); // 👈 log cached
+      console.log(`⚡ Returning cached product for id: ${handle}`);
       res.set("X-Cache", "HIT");
       return res.json(cached);
     }
 
     const query = `
-      query getProduct($handle: String!) {
-        product(handle: $handle) {
+      query getProductById($id: ID!) {
+        product(id: $id) {
           id
           title
           description
@@ -196,7 +198,7 @@ router.get("/:handle", async (req, res) => {
       }
     `;
 
-    const data = await graphQLClient.request(query, { handle });
+    const data = await graphQLClient.request(query, { id: gid });
 
     if (!data.product) {
       return res.status(404).json({ error: "Product not found" });
@@ -204,9 +206,7 @@ router.get("/:handle", async (req, res) => {
 
     cache.set(cacheKey, data.product, 600);
 
-    console.log(`✅ Fetched product for handle: ${handle}`);
-    console.log("🛒 Product:", JSON.stringify(data.product, null, 2)); // 👈 log product
-
+    console.log(`✅ Fetched product for id: ${handle}`);
     res.set("X-Cache", "MISS");
     res.json(data.product);
   } catch (error) {
