@@ -135,6 +135,18 @@ router.post("/me", async (req, res) => {
         email
         firstName
         lastName
+        phone
+        defaultAddress {
+          id
+       
+          address1
+          address2
+          city
+          province
+          country
+          zip
+        }
+      
         orders(first: 10) {
           edges {
             node {
@@ -144,6 +156,7 @@ router.post("/me", async (req, res) => {
                 amount
                 currencyCode
               }
+              processedAt
             }
           }
         }
