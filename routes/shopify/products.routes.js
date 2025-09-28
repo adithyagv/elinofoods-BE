@@ -143,6 +143,7 @@ router.get("/", async (req, res) => {
 router.get("/:handle", async (req, res) => {
   const { handle } = req.params;
   const cache = req.cache;
+  console.log("fetching product for id:", handle);
 
   // Always treat handle as numeric product id
   const gid = `gid://shopify/Product/${handle}`;
