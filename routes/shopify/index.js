@@ -4,7 +4,7 @@ import cartRoutes from "./cart.routes.js";
 import authRoutes from "./auth.routes.js";
 import customerRoutes from "./customer.routes.js";
 import graphQLClient from "../../utils/shopifyClient.js";
-
+import reviewRoutes from "./reviews.routes.js";
 const router = express.Router();
 
 // Mount sub-routes
@@ -12,7 +12,7 @@ router.use("/products", productsRoutes);
 router.use("/checkout", cartRoutes);
 router.use("/", authRoutes); // Auth routes at root level
 router.use("/customer", customerRoutes);
-
+router.use("/reviews", reviewRoutes);
 // Test endpoint to verify Shopify connection
 router.get("/test-connection", async (req, res) => {
   try {
