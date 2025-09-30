@@ -143,79 +143,134 @@ router.get("/", async (req, res) => {
 router.get("/:handle", async (req, res) => {
   const { handle } = req.params;
   const cache = req.cache;
-  console.log("fetching product for id:", handle);
 
-  // Always treat handle as numeric product id
-  const gid = `gid://shopify/Product/${handle}`;
+  console.log("Fetching product for:", handle);
+
+  // Check if handle is numeric
+  const isNumeric = /^\d+$/.test(handle);
   const cacheKey = `product:${handle}`;
 
   try {
+    // Check cache first
     const cached = cache.get(cacheKey);
     if (cached) {
-      console.log(`⚡ Returning cached product for id: ${handle}`);
+      console.log(`⚡ Returning cached product for: ${handle}`);
       res.set("X-Cache", "HIT");
       return res.json(cached);
     }
 
-    const query = `
-      query getProductById($id: ID!) {
-        product(id: $id) {
-          id
-          title
-          description
-          handle
-          featuredImage {
-            url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
-          }
-          images(first: 5) {
-            edges {
-              node {
-                url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
-                altText
-              }
+    let query, variables;
+
+    if (isNumeric) {
+      // Fetch by ID
+      const gid = `gid://shopify/Product/${handle}`;
+      query = `
+        query getProductById($id: ID!) {
+          product(id: $id) {
+            id
+            title
+            description
+            handle
+            featuredImage {
+              url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
             }
-          }
-          priceRange {
-            minVariantPrice {
-              amount
-              currencyCode
-            }
-          }
-          variants(first: 10) {
-            edges {
-              node {
-                id
-                title
-                price {
-                  amount
-                  currencyCode
+            images(first: 5) {
+              edges {
+                node {
+                  url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
+                  altText
                 }
-                availableForSale
               }
             }
+            priceRange {
+              minVariantPrice {
+                amount
+                currencyCode
+              }
+            }
+            variants(first: 10) {
+              edges {
+                node {
+                  id
+                  title
+                  price {
+                    amount
+                    currencyCode
+                  }
+                  availableForSale
+                }
+              }
+            }
+            availableForSale
           }
-          availableForSale
         }
-      }
-    `;
+      `;
+      variables = { id: gid };
+    } else {
+      // Fetch by handle
+      query = `
+        query getProductByHandle($handle: String!) {
+          productByHandle(handle: $handle) {
+            id
+            title
+            description
+            handle
+            featuredImage {
+              url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
+            }
+            images(first: 5) {
+              edges {
+                node {
+                  url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
+                  altText
+                }
+              }
+            }
+            priceRange {
+              minVariantPrice {
+                amount
+                currencyCode
+              }
+            }
+            variants(first: 10) {
+              edges {
+                node {
+                  id
+                  title
+                  price {
+                    amount
+                    currencyCode
+                  }
+                  availableForSale
+                }
+              }
+            }
+            availableForSale
+          }
+        }
+      `;
+      variables = { handle };
+    }
 
-    const data = await graphQLClient.request(query, { id: gid });
+    const data = await graphQLClient.request(query, variables);
 
-    if (!data.product) {
+    const product = isNumeric ? data.product : data.productByHandle;
+
+    if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    cache.set(cacheKey, data.product, 600);
+    // Cache result
+    cache.set(cacheKey, product, 600);
 
-    console.log(`✅ Fetched product for id: ${handle}`);
+    console.log(`✅ Fetched product for: ${handle}`);
     res.set("X-Cache", "MISS");
-    res.json(data.product);
+    res.json(product);
   } catch (error) {
     console.error("❌ Error fetching product:", error);
     res.status(500).json({ error: "Failed to fetch product" });
   }
 });
-
 // Batch products
 router.post("/batch", async (req, res) => {
   try {
