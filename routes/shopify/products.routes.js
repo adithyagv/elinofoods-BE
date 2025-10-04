@@ -10,6 +10,7 @@ let productsCache = {
   ttl: 5 * 60 * 1000, // 5 minutes cache
 };
 
+// Quick products endpoint (cached)
 router.get("/quick", async (req, res) => {
   const cache = req.cache;
   const cacheKey = "products:quick";
@@ -18,7 +19,6 @@ router.get("/quick", async (req, res) => {
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log("⚡ Returning cached products");
-      console.log("🛒 Cached Products:", JSON.stringify(cached, null, 2)); // 👈 log cached
       res.set("X-Cache", "HIT");
       return res.json(cached);
     }
@@ -65,8 +65,6 @@ router.get("/quick", async (req, res) => {
     cache.set(cacheKey, products, 300);
 
     console.log(`✅ Fetched ${products.length} products`);
-    console.log("🛒 Products:", JSON.stringify(products, null, 2)); // 👈 log products
-
     res.set("X-Cache", "MISS");
     res.json(products);
   } catch (error) {
@@ -75,203 +73,7 @@ router.get("/quick", async (req, res) => {
   }
 });
 
-// Products endpoint
-router.get("/", async (req, res) => {
-  const { limit = 20, sortKey = "UPDATED_AT", reverse = true } = req.query;
-
-  const query = `
-    query getProducts($first: Int!, $sortKey: ProductSortKeys!, $reverse: Boolean!) {
-      products(first: $first, sortKey: $sortKey, reverse: $reverse) {
-        edges {
-          node {
-            id
-            title
-            description
-            handle
-            priceRange {
-              minVariantPrice {
-                amount
-                currencyCode
-              }
-            }
-            images(first: 1) {
-              edges {
-                node {
-                  url(transform: {maxWidth: 400, maxHeight: 400})
-                  altText
-                }
-              }
-            }
-            variants(first: 5) {
-              edges {
-                node {
-                  id
-                  title
-                  price {
-                    amount
-                    currencyCode
-                  }
-                  availableForSale
-                }
-              }
-            }
-            availableForSale
-          }
-        }
-      }
-    }
-  `;
-
-  try {
-    const data = await graphQLClient.request(query, {
-      first: parseInt(limit),
-      sortKey,
-      reverse: reverse === "true",
-    });
-
-    console.log(`✅ Fetched ${data.products.edges.length} products`);
-    console.log("🛒 Products:", JSON.stringify(data.products.edges, null, 2)); // 👈 log products
-
-    res.json(data.products.edges);
-  } catch (error) {
-    console.error("Error fetching products:", error);
-    res.status(500).json({ error: "Failed to fetch products" });
-  }
-});
-
-// Product by handle
-router.get("/:handle", async (req, res) => {
-  const { handle } = req.params;
-  const cache = req.cache;
-  console.log("fetching product for id:", handle);
-
-  // Always treat handle as numeric product id
-  const gid = `gid://shopify/Product/${handle}`;
-  const cacheKey = `product:${handle}`;
-
-  try {
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      console.log(`⚡ Returning cached product for id: ${handle}`);
-      res.set("X-Cache", "HIT");
-      return res.json(cached);
-    }
-
-    const query = `
-      query getProductById($id: ID!) {
-        product(id: $id) {
-          id
-          title
-          description
-          handle
-          featuredImage {
-            url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
-          }
-          images(first: 5) {
-            edges {
-              node {
-                url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
-                altText
-              }
-            }
-          }
-          priceRange {
-            minVariantPrice {
-              amount
-              currencyCode
-            }
-          }
-          variants(first: 10) {
-            edges {
-              node {
-                id
-                title
-                price {
-                  amount
-                  currencyCode
-                }
-                availableForSale
-              }
-            }
-          }
-          availableForSale
-        }
-      }
-    `;
-
-    const data = await graphQLClient.request(query, { id: gid });
-
-    if (!data.product) {
-      return res.status(404).json({ error: "Product not found" });
-    }
-
-    cache.set(cacheKey, data.product, 600);
-
-    console.log(`✅ Fetched product for id: ${handle}`);
-    res.set("X-Cache", "MISS");
-    res.json(data.product);
-  } catch (error) {
-    console.error("❌ Error fetching product:", error);
-    res.status(500).json({ error: "Failed to fetch product" });
-  }
-});
-
-// Batch products
-router.post("/batch", async (req, res) => {
-  try {
-    const { handles } = req.body;
-
-    if (!handles || !Array.isArray(handles)) {
-      return res.status(400).json({ error: "handles array is required" });
-    }
-
-    const queries = handles
-      .map(
-        (handle, index) => `
-      product${index}: product(handle: "${handle}") {
-        id
-        title
-        handle
-        priceRange {
-          minVariantPrice {
-            amount
-            currencyCode
-          }
-        }
-        images(first: 1) {
-          edges {
-            node {
-              url(transform: {maxWidth: 300, maxHeight: 300})
-              altText
-            }
-          }
-        }
-        availableForSale
-      }
-    `
-      )
-      .join("\n");
-
-    const query = `
-      query {
-        ${queries}
-      }
-    `;
-
-    const data = await graphQLClient.request(query);
-    const products = Object.values(data).filter((product) => product !== null);
-
-    console.log(`✅ Batch fetched ${products.length} products`);
-    console.log("🛒 Products:", JSON.stringify(products, null, 2)); // 👈 log products
-
-    res.json(products);
-  } catch (error) {
-    console.error("❌ Error batch fetching products:", error);
-    res.status(500).json({ error: "Failed to batch fetch products" });
-  }
-});
-
-// Search products
+// Search products endpoint
 router.get("/search", async (req, res) => {
   try {
     const { q, limit = 10 } = req.query;
@@ -324,8 +126,6 @@ router.get("/search", async (req, res) => {
     }));
 
     console.log(`✅ Search returned ${products.length} products`);
-    console.log("🛒 Products:", JSON.stringify(products, null, 2)); // 👈 log products
-
     res.json(products);
   } catch (error) {
     console.error("❌ Error searching products:", error);
@@ -333,22 +133,53 @@ router.get("/search", async (req, res) => {
   }
 });
 
-// Paginated products
-router.get("/paginated", async (req, res) => {
+// Batch products endpoint
+router.post("/batch", async (req, res) => {
   try {
-    const { cursor, limit = 20 } = req.query;
+    const { identifiers, type = "id" } = req.body;
 
-    let paginationArgs = `first: ${parseInt(limit)}`;
-    if (cursor) {
-      paginationArgs += `, after: "${cursor}"`;
+    if (!identifiers || !Array.isArray(identifiers)) {
+      return res.status(400).json({ error: "identifiers array is required" });
     }
 
-    const query = `
-      query {
-        products(${paginationArgs}, sortKey: UPDATED_AT, reverse: true) {
-          edges {
-            cursor
-            node {
+    let queries = "";
+
+    if (type === "handle") {
+      queries = identifiers
+        .map(
+          (handle, index) => `
+          product${index}: productByHandle(handle: "${handle}") {
+            id
+            title
+            handle
+            priceRange {
+              minVariantPrice {
+                amount
+                currencyCode
+              }
+            }
+            images(first: 1) {
+              edges {
+                node {
+                  url(transform: {maxWidth: 300, maxHeight: 300})
+                  altText
+                }
+              }
+            }
+            availableForSale
+          }
+        `
+        )
+        .join("\n");
+    } else {
+      // For IDs
+      queries = identifiers
+        .map((id, index) => {
+          const gid = id.includes("gid://")
+            ? id
+            : `gid://shopify/Product/${id}`;
+          return `
+            product${index}: product(id: "${gid}") {
               id
               title
               handle
@@ -368,36 +199,332 @@ router.get("/paginated", async (req, res) => {
               }
               availableForSale
             }
-          }
-          pageInfo {
-            hasNextPage
-            hasPreviousPage
-            startCursor
-            endCursor
-          }
-        }
+          `;
+        })
+        .join("\n");
+    }
+
+    const query = `
+      query {
+        ${queries}
       }
     `;
 
     const data = await graphQLClient.request(query);
+    const products = Object.values(data).filter((product) => product !== null);
 
-    const products = data.products.edges.map(({ node, cursor }) => ({
-      cursor,
-      ...node,
-      price: node.priceRange.minVariantPrice,
-      image: node.images.edges[0]?.node || null,
-    }));
-
-    console.log(`✅ Paginated fetched ${products.length} products`);
-    console.log("🛒 Products:", JSON.stringify(products, null, 2)); // 👈 log products
-
-    res.json({
-      products,
-      pageInfo: data.products.pageInfo,
-    });
+    console.log(`✅ Batch fetched ${products.length} products`);
+    res.json(products);
   } catch (error) {
-    console.error("❌ Error fetching paginated products:", error);
-    res.status(500).json({ error: "Failed to fetch paginated products" });
+    console.error("❌ Error batch fetching products:", error);
+    res.status(500).json({ error: "Failed to batch fetch products" });
+  }
+});
+
+// Get all products with optional category filter
+router.get("/", async (req, res) => {
+  const {
+    limit = 20,
+    sortKey = "UPDATED_AT",
+    reverse = true,
+    category,
+  } = req.query;
+
+  try {
+    let query;
+    let variables = {
+      first: parseInt(limit),
+      sortKey,
+      reverse: reverse === "true",
+    };
+
+    if (category) {
+      // Map URL-friendly category names to actual product types/tags
+      const categoryMap = {
+        "bar-blast": "Bar Blast",
+        "fruit-jerky": "Fruit Jerky",
+      };
+
+      const categoryName = categoryMap[category] || category;
+
+      // Use search query to filter by product type or tag
+      query = `
+        query getProducts($first: Int!, $sortKey: ProductSortKeys!, $reverse: Boolean!, $query: String!) {
+          products(first: $first, sortKey: $sortKey, reverse: $reverse, query: $query) {
+            edges {
+              node {
+                id
+                title
+                description
+                handle
+                productType
+                tags
+                priceRange {
+                  minVariantPrice {
+                    amount
+                    currencyCode
+                  }
+                }
+                images(first: 1) {
+                  edges {
+                    node {
+                      url(transform: {maxWidth: 400, maxHeight: 400})
+                      altText
+                    }
+                  }
+                }
+                variants(first: 5) {
+                  edges {
+                    node {
+                      id
+                      title
+                      price {
+                        amount
+                        currencyCode
+                      }
+                      availableForSale
+                    }
+                  }
+                }
+                availableForSale
+              }
+            }
+          }
+        }
+      `;
+
+      variables.query = `product_type:"${categoryName}" OR tag:"${categoryName}"`;
+    } else {
+      query = `
+        query getProducts($first: Int!, $sortKey: ProductSortKeys!, $reverse: Boolean!) {
+          products(first: $first, sortKey: $sortKey, reverse: $reverse) {
+            edges {
+              node {
+                id
+                title
+                description
+                handle
+                productType
+                tags
+                priceRange {
+                  minVariantPrice {
+                    amount
+                    currencyCode
+                  }
+                }
+                images(first: 1) {
+                  edges {
+                    node {
+                      url(transform: {maxWidth: 400, maxHeight: 400})
+                      altText
+                    }
+                  }
+                }
+                variants(first: 5) {
+                  edges {
+                    node {
+                      id
+                      title
+                      price {
+                        amount
+                        currencyCode
+                      }
+                      availableForSale
+                    }
+                  }
+                }
+                availableForSale
+              }
+            }
+          }
+        }
+      `;
+    }
+
+    const data = await graphQLClient.request(query, variables);
+
+    console.log(
+      `✅ Fetched ${data.products.edges.length} products${
+        category ? ` for category: ${category}` : ""
+      }`
+    );
+    res.json(data.products.edges);
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    res.status(500).json({ error: "Failed to fetch products" });
+  }
+});
+
+// Product by numeric ID - SPECIFIC ROUTE
+router.get("/id/:id", async (req, res) => {
+  const { id } = req.params;
+  const cache = req.cache;
+  const gid = `gid://shopify/Product/${id}`;
+  const cacheKey = `product:id:${id}`;
+
+  console.log(`📦 Fetching product by ID: ${id}`);
+
+  try {
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      console.log(`⚡ Returning cached product for id: ${id}`);
+      res.set("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const query = `
+      query getProductById($id: ID!) {
+        product(id: $id) {
+          id
+          title
+          description
+          handle
+          productType
+          tags
+          featuredImage {
+            url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
+          }
+          images(first: 5) {
+            edges {
+              node {
+                url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
+                altText
+              }
+            }
+          }
+          priceRange {
+            minVariantPrice {
+              amount
+              currencyCode
+            }
+          }
+          variants(first: 10) {
+            edges {
+              node {
+                id
+                title
+                price {
+                  amount
+                  currencyCode
+                }
+                availableForSale
+              }
+            }
+          }
+          availableForSale
+        }
+      }
+    `;
+
+    const data = await graphQLClient.request(query, { id: gid });
+
+    if (!data.product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    cache.set(cacheKey, data.product, 600);
+
+    console.log(`✅ Fetched product for id: ${id}`);
+    res.set("X-Cache", "MISS");
+    res.json(data.product);
+  } catch (error) {
+    console.error("❌ Error fetching product by ID:", error);
+    res.status(500).json({ error: "Failed to fetch product" });
+  }
+});
+
+// Product by handle - SPECIFIC ROUTE
+router.get("/handle/:handle", async (req, res) => {
+  const { handle } = req.params;
+  const cache = req.cache;
+  const cacheKey = `product:handle:${handle}`;
+
+  console.log(`📦 Fetching product by handle: ${handle}`);
+
+  try {
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      console.log(`⚡ Returning cached product for handle: ${handle}`);
+      res.set("X-Cache", "HIT");
+      return res.json(cached);
+    }
+
+    const query = `
+      query getProductByHandle($handle: String!) {
+        productByHandle(handle: $handle) {
+          id
+          title
+          description
+          handle
+          productType
+          tags
+          featuredImage {
+            url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
+          }
+          images(first: 5) {
+            edges {
+              node {
+                url(transform: {maxWidth: 800, maxHeight: 800, preferredContentType: WEBP})
+                altText
+              }
+            }
+          }
+          priceRange {
+            minVariantPrice {
+              amount
+              currencyCode
+            }
+          }
+          variants(first: 10) {
+            edges {
+              node {
+                id
+                title
+                price {
+                  amount
+                  currencyCode
+                }
+                availableForSale
+              }
+            }
+          }
+          availableForSale
+        }
+      }
+    `;
+
+    const data = await graphQLClient.request(query, { handle });
+
+    if (!data.productByHandle) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    cache.set(cacheKey, data.productByHandle, 600);
+
+    console.log(`✅ Fetched product for handle: ${handle}`);
+    res.set("X-Cache", "MISS");
+    res.json(data.productByHandle);
+  } catch (error) {
+    console.error("❌ Error fetching product by handle:", error);
+    res.status(500).json({ error: "Failed to fetch product" });
+  }
+});
+
+// Generic product route - handles both ID and handle (FALLBACK)
+router.get("/:identifier", async (req, res) => {
+  const { identifier } = req.params;
+
+  console.log(`🔍 Determining type for identifier: ${identifier}`);
+
+  // Check if it's a numeric ID
+  if (/^\d+$/.test(identifier)) {
+    console.log(`✅ Identifier is numeric, treating as ID`);
+    req.params.id = identifier;
+    return router.handle(req, res, () => {}, "/id/:id");
+  } else {
+    console.log(`✅ Identifier is not numeric, treating as handle`);
+    req.params.handle = identifier;
+    return router.handle(req, res, () => {}, "/handle/:handle");
   }
 });
 
